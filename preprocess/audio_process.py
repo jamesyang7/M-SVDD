@@ -45,7 +45,7 @@ def Audio2Spectrogram(np_data,sr,num_audio=6,normarlization=0,min_frequency=8000
         sample_rate = sr,
         n_fft = 2048,
         hop_length=512,
-        n_mels=20,
+        n_mels=128,
         # f_min=min_frequency,
         # f_max=max_frequency,
         pad_mode='constant',

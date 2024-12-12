@@ -53,41 +53,40 @@ class Conv1DFeatureExtractor(nn.Module):
         return x
 
 class FFT_CNN_IFFT_Model(nn.Module):
-    def __init__(self, input_channels=2, output_dim=512, kernel_size=3):
+    def __init__(self, input_channels=2, kernel_size=3):
         super(FFT_CNN_IFFT_Model, self).__init__()
-        self.conv1 = nn.Conv1d(input_channels, 32, kernel_size=kernel_size, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm1d(32)
-        self.conv2 = nn.Conv1d(32, 64, kernel_size=kernel_size, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm1d(64)
-        self.conv3 = nn.Conv1d(64,32, kernel_size=kernel_size, stride=1, padding=1)
-        self.bn3 = nn.BatchNorm1d(32)
-        self.conv4 = nn.Conv1d(32,32, kernel_size=kernel_size, stride=1, padding=1)
-        self.bn4 = nn.BatchNorm1d(32)
-        self.pool3 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.pool2 = nn.MaxPool1d(kernel_size=4, stride=4)
-        self.pool1 = nn.MaxPool1d(kernel_size=8, stride=8)
+        
+        # 2D Convolution layers
+        self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=kernel_size, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=kernel_size, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.conv3 = nn.Conv2d(64, 32, kernel_size=kernel_size, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(32)
+        self.conv4 = nn.Conv2d(32, 32, kernel_size=kernel_size, stride=1, padding=1)
+        self.bn4 = nn.BatchNorm2d(32)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)  # 2x2 pooling to reduce dimensions
+        self.pool2 = nn.MaxPool2d(kernel_size=4, stride=2)  # 2x2 pooling to reduce dimensions
+
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        # Step 1: Compute FFT
-        x = x.permute(0,2,1)
-        fft_data = torch.fft.rfft(x, dim=1) 
-        peak_value = torch.max(torch.abs(x), dim=1, keepdim=True)[0]  
-        peak_value = peak_value.permute(0, 2, 1)  
-        magnitude = torch.abs(fft_data)  
-        magnitude = magnitude.permute(0, 2, 1)
-        magnitude = magnitude * peak_value
-        x = self.relu(self.bn1(self.conv1(magnitude)))
-        x = self.pool2(x)
-        x = self.relu(self.bn2(self.conv2(x)))
-        x = self.pool2(x)
-        x = self.relu(self.bn3(self.conv3(x)))
-        x = self.pool3(x)
-        x = self.relu(self.bn4(self.conv4(x)))
-        x = self.pool3(x)
-        x = x.permute(0,2,1)
-        return x  # Return reconstructed signal and features
-    
+        bs,c,h,w = x.size()
+        x = self.relu(self.bn1(self.conv1(x))) 
+        x = self.pool2(x)  # First pooling
+
+        x = self.relu(self.bn2(self.conv2(x)))  
+        x = self.pool2(x)  # Second pooling
+
+        x = self.relu(self.bn3(self.conv3(x)))  
+        x = self.pool1(x)  
+
+        x = self.relu(self.bn4(self.conv4(x))) 
+        x = self.pool1(x)  # Fourth pooling
+
+        x = x.view(bs,-1,32)
+
+        return x  # Final output: 32 channels with 16x16 spatial features
 
 class SinusoidalPositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=5000):
@@ -130,17 +129,17 @@ class CombinedFeatureExtractor(nn.Module):
         self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=num_layers)
 
         # Fully connected layer to map transformer output to final features
-        self.fc = nn.Linear(1024, output_dim)
+        self.fc = nn.Linear(800, output_dim)
 
-    def forward(self, x):
+    def forward(self, x,y):
         bs = x.shape[0]
 
         # Extract features from FFT-based extractor
-        fft_features = self.fft_extractor(x)  # Shape: (batch_size, seq_len, feature_dim)
+        fft_features = self.fft_extractor(y)  # Shape: (batch_size, seq_len, feature_dim)
 
         # Extract features from Conv1D-based extractor
         conv_features = self.conv_extractor(x)  # Shape: (batch_size, seq_len, feature_dim)
-
+        # print(conv_features.shape,fft_features.shape)
         # Concatenate features
         combined_features = torch.cat((fft_features, conv_features), dim=1)  # Shape: (batch_size, seq_len, combined_feature_dim)
 
@@ -189,37 +188,24 @@ class DeconvModule(nn.Module):
 class IMU_encoder(nn.Module):
     def __init__(self, fc_output_dim=512):
         super(IMU_encoder, self).__init__()
-        self.lstm1  = nn.LSTM(1,256,batch_first=True,bidirectional=False)
-        self.lstm2  = nn.LSTM(256,fc_output_dim,batch_first=True,bidirectional=False)
-        self.fc_mu     = nn.Linear(fc_output_dim,fc_output_dim)
-        self.fc_var     = nn.Linear(fc_output_dim,fc_output_dim)
+        self.fc1     = nn.Linear(400,fc_output_dim)
+        self.fc2     = nn.Linear(fc_output_dim,fc_output_dim)
+        self.relu = nn.ReLU()
         self.apply(kaiming_init)
     def forward(self, x):
-        # Flatten before passing to fully connected layer
-        x = x.unsqueeze(-1)
-        x,_ = self.lstm1(x)
-        x,_ = self.lstm2(x)
-        x   = x[:,-1,:]
-        x = self.fc_mu(x)
-        # var = self.fc_var(x)
-        # print(x.shape)
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
         return x,x
 
 class IMU_decoder(nn.Module):
     def __init__(self, fc_output_dim,input_dim=400,latent_dim=256):
         super(IMU_decoder, self).__init__()
-        self.lstm1  = nn.LSTM(1,latent_dim,batch_first=True,bidirectional=False)
-        self.lstm2  = nn.LSTM(latent_dim,1,batch_first=True,bidirectional=False)
         self.fc     = nn.Linear(fc_output_dim,input_dim)
-        self.fc_final = nn.Linear(input_dim,input_dim)
+        self.fc_final = nn.Linear(input_dim,400)
         self.relu = nn.ReLU()
         self.apply(kaiming_init)
     def forward(self, x):
-        x = self.fc(x)
-        x = x.unsqueeze(2)
-        x,_ = self.lstm1(x)
-        x,_ = self.lstm2(x)
-        x = x.squeeze(2)
+        x = self.relu(self.fc(x))
         x = self.relu(self.fc_final(x))
         return x
     

@@ -15,7 +15,7 @@ import torch.nn as nn
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class GaussianSVDDModel(nn.Module):
-    def __init__(self, output_dim=128, feature_dim=128, confidence=0.95, reg_const=1e-3, is_train=1):
+    def __init__(self, output_dim=128, feature_dim=128, confidence=0.95, reg_const=1e-4, is_train=1):
         super(GaussianSVDDModel, self).__init__()
         self.is_train = is_train
         self.audio_encoder = Conv1DFeatureExtractor(2, feature_dim)
@@ -176,7 +176,7 @@ class Trainer:
 
 
                 # # Total loss
-                total_loss = 10*gaussian_loss+scaled_reconstruction_loss+reg_loss
+                total_loss = gaussian_loss+scaled_reconstruction_loss+reg_loss
                 # total_loss = gaussian_loss+scaled_reconstruction_loss*100
                 total_loss.backward()
                 # Update parameters
@@ -289,7 +289,7 @@ class Trainer:
         # Combine the losses with weights (tunable hyperparameters)
         diagonal_weight = 1
         condition_weight = 1
-        total_loss = diagonal_weight * diagonal_penalty 
+        total_loss = diagonal_weight * diagonal_penalty +condition_number_penalty
     
         
         return total_loss

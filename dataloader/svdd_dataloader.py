@@ -157,7 +157,7 @@ class CollisionLoader_new(Dataset):
 
 
 class CollisionLoader_audio(Dataset):
-    def __init__(self,imu_path ,audio_path ,frequency=[0,10000],train=True,augment = False,mask = False,twod=0):
+    def __init__(self,imu_path ,audio_path ,frequency=[0,8000],train=True,augment = False,mask = False,twod=0):
         super(CollisionLoader_audio, self).__init__()
         self.imu_path           = imu_path
         self.audio_path         = audio_path
@@ -222,6 +222,7 @@ class CollisionLoader_audio(Dataset):
         imu_input = imu_input - difference
 
         spec       = Audio2Spectrogram(audio,sr=44100,min_frequency=self.frequency[0],max_frequency=self.frequency[1],conv_2d=0)
+
 
         imu,imu_reconstruct = torch.from_numpy(imu_input).float(),torch.from_numpy(imu_reconstruct).float()
         audio_tensor,audio_reconstruct = torch.from_numpy(audio_input).float(),torch.from_numpy(audio_reconstruct).float()

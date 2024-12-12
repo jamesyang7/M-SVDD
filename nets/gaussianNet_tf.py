@@ -6,38 +6,36 @@ import torch.optim as optim
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 # from nets.feature_extractor import Conv1DFeatureExtractor, DeconvModule, IMU_encoder, IMU_decoder
-from nets.feature_extractor_tf import CombinedFeatureExtractor, DeconvModule, IMU_encoder, IMU_decoder
+from nets.feature_extractor_tf import  DeconvModule, IMU_encoder, IMU_decoder
+from nets.feature_extractor_tf import CombinedFeatureExtractor as Conv1DFeatureExtractor
 from nets.eca_attention import eca_layer
 from nets.attentionLayer import attentionLayer
 from torch.utils.tensorboard import SummaryWriter
+from sklearn.covariance import MinCovDet
+import torch
+import torch.nn as nn
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class GaussianSVDDModel(nn.Module):
-    def __init__(self, feature_dim, confidence=0.95, reg_const=1e-3,is_train=1):
+    def __init__(self, output_dim=128, feature_dim=128, confidence=0.95, reg_const=1e-4, is_train=1):
         super(GaussianSVDDModel, self).__init__()
-        # Initialize audio and IMU encoders and decoders
         self.is_train = is_train
-        self.audio_encoder = CombinedFeatureExtractor(2, output_dim=feature_dim)
+        self.audio_encoder = Conv1DFeatureExtractor(output_dim=feature_dim)
         self.audio_decoder = DeconvModule()
         self.imu_encoder = IMU_encoder(fc_output_dim=feature_dim)
         self.imu_decoder = IMU_decoder(fc_output_dim=feature_dim)
-        # Define the fusion module
         self.cross_atten1 = attentionLayer(feature_dim, 8, 0.3)
         self.cross_atten2 = attentionLayer(feature_dim, 8, 0.3)
-        # self.cross_atten2 = attentionLayer(feature_dim*2, 8, 0.3)
         self.eca = eca_layer(channel=1)
-        # Loss weights and confidence level for dynamic radius calculation
         self.confidence = confidence
-        self.reg_const =  reg_const
-        # Mean vector and covariance matrix inverse initialization
-        self.mu = torch.zeros(feature_dim, requires_grad=False)
-        self.sigma_inv = torch.eye(feature_dim, requires_grad=False)
+        self.reg_const = reg_const
+        self.mu = torch.zeros(output_dim, requires_grad=False)
+        self.sigma_inv = torch.eye(output_dim, requires_grad=False)
         self.radius = nn.Parameter(torch.ones(1))
-
-        # self.fc_audio = nn.Linear(4352,4410)
+        # self.fc_audio = nn.Linear(4352, 4410)
         self.fc_audio = nn.Linear(2048,2052)
-        self.fc_imu = nn.Linear(400,400)
-        self.fc1 = nn.Linear(feature_dim, feature_dim)
+        self.fc_imu = nn.Linear(400, 400)
+        self.fc1 = nn.Linear(feature_dim, output_dim)
 
     def mahalanobis_distance(self, z):
         """
@@ -46,7 +44,7 @@ class GaussianSVDDModel(nn.Module):
         :return: Mahalanobis distances (batch_size,)
         """
         diff = z - self.mu
-        dist = torch.sqrt(torch.sum(diff @ self.sigma_inv * diff, dim=1))
+        dist = torch.sqrt(torch.sum(diff * (diff @ self.sigma_inv), dim=1))
         return dist
 
     def dynamic_radius(self, distances):
@@ -58,58 +56,60 @@ class GaussianSVDDModel(nn.Module):
         radius = torch.quantile(distances, self.confidence)
         return radius
 
-    def forward(self, x_audio, x_imu,flag=0):
+    def update_mcd_parameters(self, z_combined):
+        """
+        Update the mean and inverse covariance matrix using MCD.
+        :param z_combined: Combined feature vector (batch_size, feature_dim)
+        """
+        z_numpy = z_combined.detach().cpu().numpy()
+        mcd = MinCovDet().fit(z_numpy)
+        mcd_mean = torch.tensor(mcd.location_, device=z_combined.device, dtype=torch.float32)
+        mcd_cov = torch.tensor(mcd.covariance_, device=z_combined.device, dtype=torch.float32)
+        mcd_cov += self.reg_const * torch.eye(z_combined.size(1), device=z_combined.device)
+        mcd_inv_cov = torch.linalg.inv(mcd_cov)
+        return mcd_mean, mcd_inv_cov
+
+    def forward(self, x_audio, x_imu,spec, flag=0):
         """
         Perform a forward pass, compute SVDD loss and reconstruction loss.
         :param x_audio: Audio input data (batch_size, input_dim)
         :param x_imu: IMU input data (batch_size, input_dim)
         :return: Total loss combining SVDD and reconstruction losses
         """
-        # Encode audio and IMU features
         [ba, ca, feature] = x_audio.size()
-
-        audio_feature,recons_feature = self.audio_encoder(x_audio)
+        audio_feature, recons_feature = self.audio_encoder(x_audio,spec)
         audio_feature_flat = audio_feature.view(ba, -1).float()
+        imu_feature, imu_recons = self.imu_encoder(x_imu)
+        imu_feature_flat = imu_feature.view(ba, -1).float()
 
-        imu_feature,imu_recons = self.imu_encoder(x_imu)
-        imu_feature_flat   = imu_feature.view(ba, -1).float()
-
-        # Combine both features for SVDD computation
-        # fav =  audio_feature_flat
-        fva = imu_feature_flat
         fav = self.cross_atten1(imu_feature_flat.unsqueeze(1), audio_feature_flat.unsqueeze(1)).squeeze(1)
         fva = self.cross_atten2(audio_feature_flat.unsqueeze(1), imu_feature_flat.unsqueeze(1)).squeeze(1)
-        f_all = fav+fva
-        # f_all = torch.cat([fav, fva], dim=1)
-        # print(f_all.shape)
-        z_combined = f_all
-        # z_combined = self.eca(f_all.unsqueeze(1)).squeeze(1)
-        z_combined = self.fc1(z_combined)
+        f_all = fav + fva
+        z_combined = self.fc1(f_all)
 
-        # Update mean and covariance matrix inverse
+        # Update mean and covariance matrix inverse using MCD
         if self.is_train:
-            self.mu = torch.mean(z_combined, dim=0)
-            cov_matrix = torch.cov(z_combined.T) + self.reg_const * torch.eye(z_combined.size(1)).to(z_combined.device)
-            self.sigma_inv = torch.inverse(cov_matrix)
+            self.mu, self.sigma_inv = self.update_mcd_parameters(z_combined)
 
-        # self.sigma_inv = torch.inverse(torch.cov(z_combined.T) + 1e-6 * torch.eye(z_combined.size(1)).to(z_combined.device))
         # Compute Mahalanobis distances
         distances = self.mahalanobis_distance(z_combined)
+
         # Dynamic radius estimation
         if flag:
             radius = self.dynamic_radius(distances)
-            self.radius.data = torch.tensor([radius]).to(device)
-            # print(radius,self.mu[:10],self.sigma_inv[0][:10])
+            self.radius.data = torch.tensor([radius]).to(z_combined.device)
+
         # Decode audio and IMU data
-        x_audio_recon  = self.audio_decoder(recons_feature)
-        x_audio_recon  = self.fc_audio(x_audio_recon)
-        x_imu_recon    = self.imu_decoder(imu_recons)
-        x_imu_recon    = self.fc_imu(x_imu_recon)
+        x_audio_recon = self.audio_decoder(recons_feature)
+        x_audio_recon = self.fc_audio(x_audio_recon)
+        x_imu_recon = self.imu_decoder(imu_recons)
+        x_imu_recon = self.fc_imu(x_imu_recon)
 
         if self.is_train:
-            return distances,self.radius,x_audio_recon,x_imu_recon,z_combined
+            return distances, self.radius, x_audio_recon, x_imu_recon, z_combined
         else:
-            return distances,x_audio_recon,x_imu_recon,z_combined
+            return distances, x_audio_recon, x_imu_recon, z_combined
+
 
     def load_checkpoint(self, checkpoint_path):
         """
@@ -159,7 +159,7 @@ class Trainer:
 
                 self.optimizer.zero_grad()
                 # Forward pass
-                distances, radius, x_audio_recon, x_imu_recon,z = self.model(audio, imu,flag)
+                distances, radius, x_audio_recon, x_imu_recon,z = self.model(audio, imu,spec,flag)
                 # Gaussian loss
                 gaussian_loss = torch.mean(torch.relu(distances**2-radius**2))+radius**2
                 # gaussian_loss = torch.mean(torch.relu(distances**2-radius**2))
@@ -167,9 +167,7 @@ class Trainer:
                 reconstruction_loss_audio = nn.SmoothL1Loss()(audio, x_audio_recon)*8820  # Using Huber Loss
                 reconstruction_loss_imu = nn.SmoothL1Loss()(imu, x_imu_recon)*400  # Using Huber Loss
 
-                # reconstruction_loss_audio = nn.MSELoss()(audio, x_audio_recon)  # Using Huber Loss
-                # reconstruction_loss_imu = nn.MSELoss()(imu, x_imu_recon) # Using Huber Loss
-                reconstruction_loss = ( reconstruction_loss_audio+2*reconstruction_loss_imu) / 2
+                reconstruction_loss = (100* reconstruction_loss_audio+2*reconstruction_loss_imu) / 2
 
                 # Scale the reconstruction loss to balance the overall loss
                 scaled_reconstruction_loss = reconstruction_loss
@@ -212,7 +210,7 @@ class Trainer:
                     spec, imu, audio, imu_recons, audio_recons = spec.to(self.device), imu.to(self.device), audio.to(self.device), imu_recons.to(self.device), audio_recons.to(self.device)
 
                     # Forward pass for reconstruction
-                    _, _, reconstructed_audio, reconstructed_imu,_ = self.model(audio, imu)
+                    _, _, reconstructed_audio, reconstructed_imu,_ = self.model(audio, imu,spec)
 
                     # Plot and log to TensorBoard
                     self.plot_to_tensorboard(
@@ -274,22 +272,29 @@ class Trainer:
     def compute_entropy_and_covariance_loss(self, z):
         """
         Compute both the entropy loss and the covariance regularization loss.
+        Includes a diagonal penalty term to prevent small diagonal entries.
         """
         # Calculate covariance matrix
         cov_matrix = torch.cov(z.T)
-        # Calculate determinant of covariance matrix
-        logdet_cov = torch.logdet(cov_matrix + 1e-3 * torch.eye(cov_matrix.size(0)).to(cov_matrix.device))
-        # Calculate entropy based on the covariance matrix
-        entropy_loss = -0.5 * logdet_cov  # Negative to minimize the entropy
-        # Calculate eigenvalues of the covariance matrix
-        # eigenvalues = torch.linalg.eigvalsh(cov_matrix)
-        # max_eigenvalue = torch.max(eigenvalues)
-        # min_eigenvalue = torch.min(eigenvalues)
-        # # Calculate condition number (max eigenvalue / min eigenvalue) and regularization loss
-        # epsilon = 1e-6  # To avoid division by zero
-        # covariance_reg_loss = torch.log(max_eigenvalue / (min_eigenvalue + epsilon))
+        
+        cov_matrix += 1e-3 * torch.eye(cov_matrix.size(0)).to(cov_matrix.device)
+        
+        diagonal_entries = torch.diag(cov_matrix)
+        diagonal_penalty = torch.sum(1.0 / (diagonal_entries + 1e-6))  # Avoid division by zero
+        eigenvalues = torch.linalg.eigvalsh(cov_matrix)
+        max_eigenvalue = torch.max(eigenvalues)
+        min_eigenvalue = torch.min(eigenvalues)
+        epsilon = 1e-6  # To avoid division by zero
+        condition_number_penalty = (max_eigenvalue / (min_eigenvalue + epsilon))
+        
+        # Combine the losses with weights (tunable hyperparameters)
+        diagonal_weight = 1
+        condition_weight = 1
+        total_loss = diagonal_weight * diagonal_penalty +condition_number_penalty
+    
+        
+        return total_loss
 
-        return entropy_loss
 
 
 

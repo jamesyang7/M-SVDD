@@ -22,7 +22,7 @@ test_audio_path = '/home/iot/collision_detect/new_data/audio_np/Normal_test'
 test_imu_path = '/home/iot/collision_detect/new_data/imu_np/Normal_test'
 
 checkpoint_path = ''
-save_path = '/home/iot/collision_detect/output'
+save_path = '/home/iot/GSVDD/output'
 feature_dim = 32
 print(f"The feature dim is {feature_dim}")
 # save_name = "Gaussian_{}".format(feature_dim)
@@ -52,7 +52,7 @@ if checkpoint_path != '':
 
 optimizer = optim.Adam([
     {'params':[param for name,param in model.named_parameters() if name!='radius'], 'lr':0.0001 },
-    {'params':model.radius, 'lr':0.001 },
+    {'params':model.radius, 'lr':0.0005 },
                        ])
 
 # optimizer = optim.Adam([
