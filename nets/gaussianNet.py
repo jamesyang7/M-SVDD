@@ -131,7 +131,7 @@ class Trainer:
         self.device = device
         self.checkpoint_path = checkpoint_path
         self.writer = SummaryWriter(log_dir=log_dir)  # Initialize TensorBoard writer
-        self.lamda = 0.001
+        self.lamda = 0.01
 
     def train(self, num_epochs, log_interval=5):
         """
