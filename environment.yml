@@ -1,0 +1,11 @@
+name: deepod
+dependencies:
+  - numpy
+  - pandas
+  - scikit-learn
+  - scipy
+  - pytorch
+  - tqdm
+  - ray
+  - pyarrow
+

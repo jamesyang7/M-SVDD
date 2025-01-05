@@ -1,0 +1,87 @@
+DIF:
+  rep_dim: 20
+  hidden_dims: 32
+  n_ensemble: 50
+  n_estimators: 6
+
+DeepSVDDTS:
+  network: Transformer
+  rep_dim: 64
+  hidden_dims: 512
+  act: GELU
+  lr: 0.00001
+  epochs: 20
+  batch_size: 128
+  epoch_steps: -1
+
+TranAD:
+  lr: 0.001
+  epochs: 10
+  batch_size: 128
+  epoch_steps: -1
+
+USAD:
+  hidden_dims: 100
+  lr: 1e-3
+  epochs: 10
+  batch_size: 128
+
+COUTA:
+  neg_batch_ratio: 0.2
+  alpha: 0.1
+  rep_dim: 16
+  hidden_dims: 16
+  lr: 0.0001
+  epochs: 20
+  batch_size: 64
+
+TcnED:
+  epochs: 100
+  lr: 0.00015
+  dropout: 0.42
+  kernel_size: 2
+  rep_dim: 8
+  hidden_dims: '8,8'
+  batch_size: 512
+
+AnomalyTransformer:
+  lr: 0.0001
+  epochs: 10
+  batch_size: 32
+  k: 3
+
+TimesNet:
+  lr: 0.0001
+  batch_size: 128
+  epochs: 10
+  pred_len: 0
+  e_layers: 2
+  d_model: 64
+  d_ff: 64
+  dropout: 0.1
+  top_k: 5
+  num_kernels: 6
+
+
+
+RoSAS:
+  epoch_steps: 16
+  epochs: 200
+  batch_size: 32
+  lr: 0.005
+  n_emb: 128
+  alpha: 0.5
+  margin: 1
+  beta: 1
+
+DCdetector:
+  patch_size: [1,3,5]
+  batch_size: 128
+  epochs: 10
+  lr: 0.0001
+  n_heads: 1
+  d_model: 256
+  e_layers: 3
+
+
+
