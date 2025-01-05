@@ -8,3 +8,5 @@ NeuTraL-AD/
 not_use/
 vis/
 ploting/
+__pycache__/
+.ipynb_checkpoints/
