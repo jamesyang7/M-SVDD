@@ -23,7 +23,7 @@ test_imu_path = '/home/iot/collision_detect/new_data/imu_np/Normal_test'
 
 checkpoint_path = ''
 save_path = '/home/iot/GSVDD/output'
-feature_dim = 2
+feature_dim = 32
 print(f"The feature dim is {feature_dim}")
 # save_name = "Gaussian_{}".format(feature_dim)
 save_name = "test"
@@ -32,7 +32,7 @@ os.makedirs(save_dir, exist_ok=True)
 
 # Hyperparameters and Settings
 workers = 4
-batchsize = 256  #32
+batchsize = 32  #32
 Epoch = 50
 a, b = 0.1, 10
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -52,7 +52,7 @@ if checkpoint_path != '':
 
 optimizer = optim.Adam([
     {'params':[param for name,param in model.named_parameters() if name!='radius'], 'lr':0.0001 },
-    {'params':model.radius, 'lr':0.0005 },
+    {'params':model.radius, 'lr':0.0001 },
                        ])
 
 # optimizer = optim.Adam([
