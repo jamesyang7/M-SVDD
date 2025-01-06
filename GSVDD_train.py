@@ -14,7 +14,6 @@ train_audio_path = '/home/iot/collision_detect/new_data/audio_np/Normal_train'
 train_imu_path = '/home/iot/collision_detect/new_data/imu_np/Normal_train'
 test_audio_path = '/home/iot/collision_detect/new_data/audio_np/Normal_test'
 test_imu_path = '/home/iot/collision_detect/new_data/imu_np/Normal_test'
-
 checkpoint_path = ''
 save_path = './output'
 feature_dim = 32
@@ -23,9 +22,8 @@ save_name = "test"
 save_dir = os.path.join(save_path, save_name)
 os.makedirs(save_dir, exist_ok=True)
 workers = 4
-batchsize = 32  #32
+batchsize = 32  
 Epoch = 50
-a, b = 0.1, 10
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Data Loaders
