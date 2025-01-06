@@ -7,32 +7,44 @@ Our approach leverages a **Gaussian-based Deep Support Vector Data Description (
 
 ---
 
-## Teaser Image  
-![The structure of the proposed network](image/teaser.png)  
+## The structure of the proposed network 
+<div style="text-align: center;">
+    <img src="image/teaser.png" alt="The structure of the proposed network" width="400">
+</div>
+
+## Preparation
+
+### Environment Setup
+To ensure compatibility and smooth execution, the following libraries and frameworks are required:
+- **PyTorch**
+- **TorchAudio**
+- **DeepOD**
+
+### Dataset
+The dataset used in this work was collected from the platform illustrated in the figure below. 
+It can be downloaded from the following link:[Insert download link here]
 
 ---
+## Train and Validatation
 
-## Getting Started  
+### Set the Configuration  
+Edit the configuration file located at: `config/config.json`  
 
-### Step 1: Set the Configuration  
-Edit the configuration file located at:  
-`config/config.json`  
-
-### Step 2: Train the Network  
+### Train the Network  
 Run the following command to train the model:  
 ```bash
 python GSVDD_train.py
 ```  
 
-### Step 3: Evaluate the Network  
-After training, evaluate the model's performance using:  
-`GSVDD_test.ipynb`  
+### Evaluate the Network  
+After training, evaluate the model's performance using:`GSVDD_test.ipynb`  
 
 ---
 
 ## Note
 The evaluation of the model on public datasets are presented in timeseries branch.
 
+___
 
 ## References  
 - **TranAD**: [TranAD Repository](https://github.com/imperial-qore/TranAD)  
