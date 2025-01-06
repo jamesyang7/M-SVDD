@@ -80,7 +80,7 @@ class GaussianSVDDModel(nn.Module):
         fva = self.cross_atten2(audio_feature_flat.unsqueeze(1), imu_feature_flat.unsqueeze(1)).squeeze(1)
         f_all = fav + fva
         z_combined = self.fc1(f_all)
-        # print(z_combined.shape)
+
         # Update mean and covariance matrix inverse using MCD
         if self.is_train:
             self.mu, self.sigma_inv = self.update_mcd_parameters(z_combined)
