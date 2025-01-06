@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import cv2
 from torch.utils.data.dataset import Dataset
 from preprocess.audio_process import *
-from preprocess.image_process import *
+from not_use.image_process import *
 import random
 from .utlis import *
 np.random.seed(42)

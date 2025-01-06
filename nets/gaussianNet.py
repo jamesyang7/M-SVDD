@@ -1,10 +1,7 @@
 import os
-
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from matplotlib import pyplot as plt
-from torch.utils.data import DataLoader
 from nets.feature_extractor import Conv1DFeatureExtractor, DeconvModule, IMU_encoder, IMU_decoder
 from nets.eca_attention import eca_layer
 from nets.attentionLayer import attentionLayer
@@ -298,25 +295,3 @@ class Trainer:
 
 
 
-# def main():
-#     # Hyperparameters and setup
-#     feature_dim = 128
-#     learning_rate = 0.001
-#     num_epochs = 20
-#     batch_size = 32
-#
-#     # Model, optimizer, and device setup
-#     model = GaussianSVDDModel(feature_dim=feature_dim)
-#     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-#     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#
-#     # Assume train_loader is defined and provides batches of audio and IMU data
-#     # Replace `YourDatasetClass` with the actual dataset class used
-#     train_loader = DataLoader(YourDatasetClass(...), batch_size=batch_size, shuffle=True)
-#
-#     # Initialize and start training
-#     trainer = Trainer(model, train_loader, optimizer, device, checkpoint_path='gaussian_svdd_checkpoint.pth')
-#     trainer.train(num_epochs=num_epochs)
-#
-# if __name__ == "__main__":
-#     main()
