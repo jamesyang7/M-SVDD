@@ -1,46 +1,59 @@
 import os
-import numpy as np
+import json
 import torch
+import numpy as np
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from dataloader.svdd_dataloader import CollisionLoader_audio as CollisionLoader_new
+from dataloader.svdd_dataloader import CollisionLoader_audio as CollisionLoader
 from nets.gaussianNet import Trainer, GaussianSVDDModel
 import warnings
 warnings.filterwarnings("ignore")
 torch.manual_seed(42)
 np.random.seed(42)
 
-train_audio_path = '/home/iot/collision_detect/new_data/audio_np/Normal_train'
-train_imu_path = '/home/iot/collision_detect/new_data/imu_np/Normal_train'
-test_audio_path = '/home/iot/collision_detect/new_data/audio_np/Normal_test'
-test_imu_path = '/home/iot/collision_detect/new_data/imu_np/Normal_test'
-checkpoint_path = ''
-save_path = './output'
-feature_dim = 32
-print(f"The feature dim is {feature_dim}")
-save_name = "test"
-save_dir = os.path.join(save_path, save_name)
-os.makedirs(save_dir, exist_ok=True)
-workers = 4
-batchsize = 32  
-Epoch = 50
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# Load configuration
+with open("config/config.json", "r") as f:
+    cfg = json.load(f)
 
-# Data Loaders
-train_data = CollisionLoader_new(train_imu_path, train_audio_path, augment=False, mask=False)
-val_data = CollisionLoader_new(test_imu_path, test_audio_path, augment=False, mask=False)
-train_dataloader = DataLoader(train_data, batchsize, shuffle=True, num_workers=workers, drop_last=True)
-val_dataloader = DataLoader(val_data, batchsize, shuffle=True, num_workers=workers, drop_last=True)
+# Unpack configuration
+data_cfg = cfg["data"]
+model_cfg = cfg["model"]
+train_cfg = cfg["training"]
+runtime_cfg = cfg["runtime"]
 
-# Model and Optimizer
-model = GaussianSVDDModel(output_dim=feature_dim).to(device)
-if checkpoint_path != '':
-    model.load_state_dict(torch.load(checkpoint_path))
+# Device setup
+device = torch.device(runtime_cfg["device"] if torch.cuda.is_available() else "cpu")
+
+# Directory setup
+os.makedirs(runtime_cfg["save_dir"], exist_ok=True)
+
+# Data loaders
+train_loader = DataLoader(
+    CollisionLoader(data_cfg["train_imu"], data_cfg["train_audio"], augment=False, mask=False),
+    batch_size=train_cfg["batch_size"],
+    shuffle=True,
+    num_workers=runtime_cfg["workers"],
+    drop_last=True
+)
+
+val_loader = DataLoader(
+    CollisionLoader(data_cfg["test_imu"], data_cfg["test_audio"], augment=False, mask=False),
+    batch_size=train_cfg["batch_size"],
+    shuffle=False,
+    num_workers=runtime_cfg["workers"],
+    drop_last=True
+)
+
+# Model and optimizer
+model = GaussianSVDDModel(output_dim=model_cfg["feature_dim"]).to(device)
+if model_cfg["checkpoint"]:
+    model.load_state_dict(torch.load(model_cfg["checkpoint"]))
 
 optimizer = optim.Adam([
-    {'params':[param for name,param in model.named_parameters() if name!='radius'], 'lr':0.0001 },
-    {'params':model.radius, 'lr':0.0001 },
-                       ])
+    {"params": [p for n, p in model.named_parameters() if n != "radius"], "lr": train_cfg["learning_rate"]},
+    {"params": model.radius, "lr": train_cfg["learning_rate_radius"]}
+])
 
-trainer = Trainer(model, train_dataloader, optimizer, device, checkpoint_path=save_dir,log_dir=save_dir)
-trainer.train(num_epochs=Epoch,log_interval=5)
+# Training
+trainer = Trainer(model, train_loader, optimizer, device, checkpoint_path=runtime_cfg["save_dir"], log_dir=runtime_cfg["save_dir"])
+trainer.train(num_epochs=train_cfg["epochs"], log_interval=5)
