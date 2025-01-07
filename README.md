@@ -8,10 +8,13 @@ Our approach leverages a **Gaussian-based Deep Support Vector Data Description (
 ---
 
 ## The structure of the proposed network 
-<div style="text-align: center;">
-    <img src="image/teaser.png" alt="The structure of the proposed network" width="400">
+<div style="display: flex; justify-content: center; align-items: center; gap: 60px;">
+    <img src="image/teaser.png" alt="The structure of the proposed network" width="450">
+    <img src="image/data_collection.jpg" alt="Data collection platform" width="300">
 </div>
 
+
+---
 ## Preparation
 
 ### Environment Setup
