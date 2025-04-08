@@ -23,9 +23,6 @@ To ensure compatibility and smooth execution, the following libraries and framew
 - **TorchAudio**
 - **DeepOD**
 
-### Dataset
-The dataset used in this work was collected from the platform illustrated in the figure below. 
-It can be downloaded from the following link:[Insert download link here]
 
 ---
 ## Train and Validatation
