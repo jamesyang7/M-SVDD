@@ -44,9 +44,13 @@ After training, evaluate the model's performance using:`GSVDD_test.ipynb`
 
 ---
 
-## Note
-The evaluation of the model on public datasets are presented in timeseries branch.
+### Dataset
+The dataset used in this repository can be downloaded from [this link](https://entuedu-my.sharepoint.com/:u:/g/personal/yizhuo001_e_ntu_edu_sg/EbQAP08fM_5LvZqfEVBX7BUBNH7RfH1T1OE26DDRPsigow?e=gmIETT).  
+The ROS bag containing all modality data will be uploaded soon.
 
+---
+## Note
+- The evaluation of the model on public datasets are presented in timeseries branch.
 ___
 
 ## References  
