@@ -47,7 +47,7 @@ After training, evaluate the model's performance using:`GSVDD_test.ipynb`
 
 ---
 ## Note
-- The evaluation of the model on public datasets are presented in timeseries branch.
+- The evaluation of the model on public datasets are presented in timeseries branch or [this link](https://anonymous.4open.science/r/GSVDD-853B).
 ___
 
 ## References  
