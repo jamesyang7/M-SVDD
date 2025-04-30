@@ -1,10 +1,6 @@
 
 # Audio-Inertia Fusion for Anomaly Detection in Autonomous Mobile Robots Based on Mahalanobis SVDD  
 
-This repository contains the implementation of our proposed unsupervised anomaly detection network that fuses **audio** and **IMU data** to detect anomalies, including **collisions** and **component failures**.  
-
-Our approach leverages a *Mahalanobis distance-based Deep Support Vector Data Description (M-SVDD)** model trained solely on **normal operational data**, enabling cost-effective and robust anomaly detection **without the need for annotated fault datasets**.  
-
 ---
 
 ## The structure of the proposed network 
