@@ -29,11 +29,11 @@ Edit the configuration file located at: `config/config.json`
 ### Train the Network  
 Run the following command to train the model:  
 ```bash
-python GSVDD_train.py
+python MSVDD_train.py
 ```  
 
 ### Evaluate the Network  
-After training, evaluate the model's performance using:`GSVDD_test.ipynb`  
+After training, evaluate the model's performance using:`MSVDD_test.ipynb`  
 
 ---
 
