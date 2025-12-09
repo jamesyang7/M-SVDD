@@ -11,6 +11,31 @@ import random
 from .utlis import *
 np.random.seed(42)
 
+def apply_mask(imu):
+    channels, samples = imu.shape
+    mask_ratio = np.random.uniform(0.4, 0.6)
+    mask_length = int(samples * mask_ratio)
+    train_data = imu[:, :mask_length]
+    test_data = imu[:, mask_length:]
+
+    def interpolate_data(data, original_length):
+        num_channels, data_length = data.shape
+        new_indices = np.linspace(0, data_length - 1, original_length)
+
+        interpolated_data = np.zeros((num_channels, original_length))
+        for i in range(num_channels):
+            interpolated_data[i] = np.interp(new_indices, np.arange(data_length), data[i])
+
+        return interpolated_data
+
+    train_data_stretched = interpolate_data(train_data, samples)
+    test_data_stretched = interpolate_data(test_data, samples)
+
+    return train_data_stretched, test_data_stretched
+
+
+
+
 class CollisionLoader(Dataset):
     def __init__(self, data_path,frequency=[0,10000],train=True,augment = False):
         super(CollisionLoader, self).__init__()
