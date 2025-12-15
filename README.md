@@ -38,8 +38,8 @@ After training, evaluate the model's performance using:`MSVDD_test.ipynb`
 ---
 
 ### Dataset
-- The dataset used in this repository can be downloaded from [this link](https://entuedu-my.sharepoint.com/:u:/g/personal/yizhuo001_e_ntu_edu_sg/EbQAP08fM_5LvZqfEVBX7BUBNH7RfH1T1OE26DDRPsigow?e=gmIETT).  
-- The ROS bag containing all modality data will be uploaded soon.
+- The dataset used in this repository can be downloaded from [this link](https://entuedu-my.sharepoint.com/:u:/r/personal/yizhuo001_e_ntu_edu_sg/Documents/MSVDD_DATA/data.zip?csf=1&web=1&e=pMJKYR).  
+- The ROS bag containing all modality data will be uploaded soon (will be in [this link](https://entuedu-my.sharepoint.com/:f:/g/personal/yizhuo001_e_ntu_edu_sg/IgBm_gZybAIiSYZWZwp9M3F2AQCizBDaBSX8U0vxGE1o_8Q?e=NBajRE)).
 
 ---
 ## Note
