@@ -32,8 +32,8 @@ Run the following command to train the model:
 python MSVDD_train.py
 ```  
 
-### Evaluate the Network  
-After training, evaluate the model's performance using:`MSVDD_test.ipynb`  
+<!-- ### Evaluate the Network  
+After training, evaluate the model's performance using:`MSVDD_test.ipynb` -->
 
 ---
 
@@ -43,7 +43,7 @@ After training, evaluate the model's performance using:`MSVDD_test.ipynb`
 
 ---
 ## Note
-- The evaluation of the model on public datasets are presented in timeseries branch or [this link](https://anonymous.4open.science/r/GSVDD-853B).
+- The evaluation of the model on public datasets are presented in timeseries branch.
 ___
 
 ## References  
