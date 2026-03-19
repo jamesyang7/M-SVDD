@@ -12,90 +12,130 @@ import torch.nn as nn
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class GaussianSVDDModel(nn.Module):
-    def __init__(self, output_dim=128, feature_dim=128, confidence=0.95, reg_const=1e-4, is_train=1):
-        super(GaussianSVDDModel, self).__init__()
+    def __init__(
+        self,
+        output_dim=128,
+        feature_dim=128,
+        confidence=0.95,
+        reg_const=1e-4,
+        is_train=1,
+        update_interval=50,   # update Gaussian stats every N forward passes
+    ):
+        super().__init__()
         self.is_train = is_train
-        self.audio_encoder = Conv1DFeatureExtractor(2, feature_dim)
-        self.audio_decoder = DeconvModule()
-        self.imu_encoder = IMU_encoder(fc_output_dim=feature_dim)
-        self.imu_decoder = IMU_decoder(fc_output_dim=feature_dim)
-        self.cross_atten1 = attentionLayer(feature_dim, 8, 0.3)
-        self.cross_atten2 = attentionLayer(feature_dim, 8, 0.3)
-        self.eca = eca_layer(channel=1)
         self.confidence = confidence
         self.reg_const = reg_const
-        self.mu = torch.zeros(output_dim, requires_grad=False)
-        self.sigma_inv = torch.eye(output_dim, requires_grad=False)
-        self.radius = nn.Parameter(torch.ones(1))
+        self.update_interval = update_interval
+        self.forward_counter = 0
+
+        self.audio_encoder = Conv1DFeatureExtractor(2, feature_dim)
+        self.audio_decoder = DeconvModule()
+
+        self.imu_encoder = IMU_encoder(fc_output_dim=feature_dim)
+        self.imu_decoder = IMU_decoder(fc_output_dim=feature_dim)
+
+        self.cross_atten1 = attentionLayer(feature_dim, 8, 0.3)
+        self.cross_atten2 = attentionLayer(feature_dim, 8, 0.3)
+
         self.fc_audio = nn.Linear(4352, 4410)
         self.fc_imu = nn.Linear(400, 400)
         self.fc1 = nn.Linear(feature_dim, output_dim)
 
-    def mahalanobis_distance(self, z):
-        """
-        Calculate Mahalanobis distance for each data point in the batch.
-        :param z: Feature vectors (batch_size, feature_dim)
-        :return: Mahalanobis distances (batch_size,)
-        """
-        diff = z - self.mu
-        dist = torch.sqrt(torch.sum(diff * (diff @ self.sigma_inv), dim=1))
-        return dist
+        # Non-trainable states: use buffers
+        self.register_buffer("mu", torch.zeros(output_dim, dtype=torch.float32))
+        self.register_buffer("sigma_inv", torch.eye(output_dim, dtype=torch.float32))
+        self.radius = nn.Parameter(torch.ones(1))
 
-    def dynamic_radius(self, distances):
+    def mahalanobis_distance(self, z: torch.Tensor) -> torch.Tensor:
         """
-        Estimate dynamic radius for the Gaussian sphere based on confidence level.
-        :param distances: Mahalanobis distances for normal data points (batch_size,)
-        :return: Estimated radius (scalar)
+        z: [B, D]
+        mu: [D]
+        sigma_inv: [D, D]
         """
-        radius = torch.quantile(distances, self.confidence)
-        return radius
+        diff = z - self.mu.unsqueeze(0)                # [B, D]
+        dist_sq = torch.sum((diff @ self.sigma_inv) * diff, dim=1)
+        dist_sq = torch.clamp(dist_sq, min=1e-12)
+        return torch.sqrt(dist_sq)
 
-    def update_mcd_parameters(self, z_combined):
-        """
-        Update the mean and inverse covariance matrix using MCD.
-        :param z_combined: Combined feature vector (batch_size, feature_dim)
-        """
-        z_numpy = z_combined.detach().cpu().numpy()
-        mcd = MinCovDet().fit(z_numpy)
-        mcd_mean = torch.tensor(mcd.location_, device=z_combined.device, dtype=torch.float32)
-        mcd_cov = torch.tensor(mcd.covariance_, device=z_combined.device, dtype=torch.float32)
-        mcd_cov += self.reg_const * torch.eye(z_combined.size(1), device=z_combined.device)
-        mcd_inv_cov = torch.linalg.inv(mcd_cov)
-        return mcd_mean, mcd_inv_cov
+    @torch.no_grad()
+    def dynamic_radius(self, distances: torch.Tensor) -> torch.Tensor:
+        return torch.quantile(distances, self.confidence)
 
-    def forward(self, x_audio, x_imu, flag=0):
+    @torch.no_grad()
+    def update_gaussian_parameters(self, z_combined: torch.Tensor):
         """
-        Perform a forward pass, compute SVDD loss and reconstruction loss.
-        :param x_audio: Audio input data (batch_size, input_dim)
-        :param x_imu: IMU input data (batch_size, input_dim)
-        :return: Total loss combining SVDD and reconstruction losses
+        Faster Gaussian stats update in pure torch.
+        z_combined: [B, D]
         """
-        [ba, ca, feature] = x_audio.size()
+        z = z_combined.detach()
+        mu = z.mean(dim=0)  # [D]
+
+        z_centered = z - mu.unsqueeze(0)              # [B, D]
+        cov = (z_centered.T @ z_centered) / max(z.size(0) - 1, 1)
+
+        eye = torch.eye(z.size(1), device=z.device, dtype=z.dtype)
+        cov = cov + self.reg_const * eye
+
+        # Cholesky-based inverse
+        L = torch.linalg.cholesky(cov)
+        inv_cov = torch.cholesky_inverse(L)
+
+        self.mu.copy_(mu)
+        self.sigma_inv.copy_(inv_cov)
+
+    def forward(self, x_audio, x_imu, flag=0, decode=True):
+        """
+        x_audio: [B, C, T]
+        x_imu:   [B, ...]
+        decode: whether to run reconstruction branches
+        """
+        ba = x_audio.size(0)
+
+        # Encoder
         audio_feature, recons_feature = self.audio_encoder(x_audio)
-        audio_feature_flat = audio_feature.view(ba, -1).float()
-        imu_feature, imu_recons = self.imu_encoder(x_imu)
-        imu_feature_flat = imu_feature.view(ba, -1).float()
+        audio_feature_flat = audio_feature.reshape(ba, -1).float()
 
-        fav = self.cross_atten1(imu_feature_flat.unsqueeze(1), audio_feature_flat.unsqueeze(1)).squeeze(1)
-        fva = self.cross_atten2(audio_feature_flat.unsqueeze(1), imu_feature_flat.unsqueeze(1)).squeeze(1)
+        imu_feature, imu_recons = self.imu_encoder(x_imu)
+        imu_feature_flat = imu_feature.reshape(ba, -1).float()
+
+        # Cross attention fusion
+        fav = self.cross_atten1(
+            imu_feature_flat.unsqueeze(1),
+            audio_feature_flat.unsqueeze(1)
+        ).squeeze(1)
+
+        fva = self.cross_atten2(
+            audio_feature_flat.unsqueeze(1),
+            imu_feature_flat.unsqueeze(1)
+        ).squeeze(1)
+
         f_all = fav + fva
         z_combined = self.fc1(f_all)
 
-        # Update mean and covariance matrix inverse using MCD
+        # Update Gaussian stats only periodically
         if self.is_train:
-            self.mu, self.sigma_inv = self.update_mcd_parameters(z_combined)
+            if self.forward_counter % self.update_interval == 0:
+                self.update_gaussian_parameters(z_combined)
+            self.forward_counter += 1
 
-        # Compute Mahalanobis distances
         distances = self.mahalanobis_distance(z_combined)
 
-        # Dynamic radius estimation
+        # Radius update
         if flag:
-            radius = self.dynamic_radius(distances)
-            self.radius.data = torch.tensor([radius]).to(z_combined.device)
+            with torch.no_grad():
+                radius = self.dynamic_radius(distances)
+                self.radius.data.copy_(radius.unsqueeze(0))
 
-        # Decode audio and IMU data
+        if not decode:
+            if self.is_train:
+                return distances, self.radius, z_combined
+            else:
+                return distances, z_combined
+
+        # Decode only if needed
         x_audio_recon = self.audio_decoder(recons_feature)
         x_audio_recon = self.fc_audio(x_audio_recon)
+
         x_imu_recon = self.imu_decoder(imu_recons)
         x_imu_recon = self.fc_imu(x_imu_recon)
 
@@ -104,19 +144,20 @@ class GaussianSVDDModel(nn.Module):
         else:
             return distances, x_audio_recon, x_imu_recon, z_combined
 
-
     def load_checkpoint(self, checkpoint_path):
-        """
-        Load the model, mean vector, and covariance matrix inverse from a checkpoint file.
-        """
-        # checkpoint = torch.load(os.path.join(checkpoint_path,"last_weights"))
-        checkpoint = torch.load(checkpoint_path)
-        self.load_state_dict(checkpoint['model_state_dict'])
-        self.mu = checkpoint['mu']
-        self.sigma_inv = checkpoint['sigma_inv']
-        self.radius = checkpoint['radius']
+        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        self.load_state_dict(checkpoint["model_state_dict"], strict=False)
+
+        if "mu" in checkpoint:
+            self.mu.copy_(checkpoint["mu"])
+        if "sigma_inv" in checkpoint:
+            self.sigma_inv.copy_(checkpoint["sigma_inv"])
+        if "radius" in checkpoint:
+            self.radius.data.copy_(checkpoint["radius"])
+
         print(f"Model loaded from {checkpoint_path}.")
 
+        
 class Trainer:
     def __init__(self, model, train_loader, optimizer, device,checkpoint_path='checkpoint.pth', log_dir='logs'):
         """
